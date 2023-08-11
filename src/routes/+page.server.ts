@@ -34,12 +34,15 @@ export async function load({ params }) {
 			return
 		}
 
-		if (agency.link && !/wildwebe/.test(agency.link)) {
+		if (agency.link && !(/wildwebe/.test(agency.link) || /wildcad\.net/.test(agency.link))) {
 			return
 		}
 
 		agencies.push(agency)
 	})
+
+	// SORT AGENCIES
+	agencies.sort((a, b) => a.name < b.name ? -1 : 1)
 
 	return { agencies }
 

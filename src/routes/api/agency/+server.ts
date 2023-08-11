@@ -1,17 +1,143 @@
 import { error } from '@sveltejs/kit'
 import { addLast } from 'timm'
 import * as turf from '@turf/turf'
+import cheerio from 'cheerio'
+
+const getWildcad = async (link) => {
+	const cadUrl = (code) => `http://www.wildcad.net/WC${code}open.htm`
+
+	let fires = []
+	try {
+		const reg = /http:\/\/www\.wildcad\.net\?WildWeb=([-\w]+)/
+		const code = reg.exec(link)[1]
+
+		const r = await fetch(cadUrl(code), {
+			mode: 'cors',
+			cache: "no-store",
+		})
+
+		const post = await r.text()
+
+		const c = cheerio.load(post)
+
+		const dealios = []
+
+		let dateIndex = 0
+		let locationIndex = 0
+		let nameIndex = 0
+		let acresIndex = 0
+		let typeIndex = 0
+
+		c('TABLE TR').each((_i, el) => {
+			let dealio = {}
+
+			c(el).children('TD').each((i, td) => {
+				if (c(td).text() === 'Date') {
+					dateIndex = i
+				}
+
+				if (c(td).text() === 'Name') {
+					nameIndex = i
+				}
+
+				if (c(td).text() === 'Lat/Lon') {
+					locationIndex = i
+				}
+
+				if (c(td).text() === 'Acres') {
+					acresIndex = i
+				}
+
+				if (c(td).text() === 'Type') {
+					typeIndex = i
+				}
+			})
+
+			c(el).children('TD').each((i, td) => {
+				if (i === 0) {
+					if (dealio.lat && dealio.lng && dealio.type !== 'False Alarm' && dealio.type !== 'Aircraft' && dealio.type !== 'Resource Order' && dealio.type !== 'Smoke Check') {
+						dealios.push(dealio)
+					}
+
+					dealio = {}
+				}
+
+				if (i === dateIndex) {
+					dealio.date = c(td).text()
+				}
+
+				if (i === nameIndex) {
+					dealio.name = c(td).text()
+				}
+
+				if (i === typeIndex) {
+					dealio.type = c(td).text()
+				}
+
+				if (i === acresIndex) {
+					dealio.acres = Number(c(td).text()) || 0
+				}
+
+				if (i === locationIndex) {
+					const latlng = c(td).text()
+					const reg = /([-\d]+\s[\.\d]+),\s([-\d]+\s[\.\d]+)/
+					const things = reg.exec(latlng)
+
+					if (things !== null) {
+						const [latH, latM] = things[1].split(' ')
+						const [lngH, lngM] = things[2].split(' ')
+						const lat = Number(latH) + (Number(latM) / 60)
+						const lng = Number(lngH) - (Number(lngM) / 60)
+
+						dealio.lat = lat
+						dealio.lng = lng
+					}
+
+					if (things === null) {
+						const [lat, lng] = latlng.split(', ')
+
+						dealio.lat = Number(lat) || 0
+						dealio.lng = Number(lng) || 0
+					}
+				}
+			})
+
+			if (dealio.lat && dealio.lng && dealio.type !== 'False Alarm' && dealio.type !== 'Aircraft' && dealio.type !== 'Resource Order' && dealio.type !== 'Smoke Check') {
+				dealios.push(dealio)
+			}
+		})
+
+		fires = dealios
+	}
+	catch(err) {
+		console.error(err)
+		return [[], []]
+	}
+
+	if (fires.length === 0) {
+		return [[],[]]
+	}
+
+	const features = turf.points(fires.map(f => [f.lng, f.lat]))
+
+	const center = turf.center(features)
+
+	return [fires, center.geometry.coordinates]
+}
 
 const getWildwebe = async (link) => {
-	console.log('webe', link)
 	const wildUrl = (code) => `https://snknmqmon6.execute-api.us-west-2.amazonaws.com/centers/${code}/incidents`
 
 	let fires = []
-	// try {
+	try {
 		const reg = /https:\/\/www\.wildwebe\.net\/\?dc_name=(\w+)/
 		const code = reg.exec(link)[1]
 
-		const r = await fetch(wildUrl(code))
+		const r = await fetch(wildUrl(code), {
+			mode: 'cors',
+			cache: "no-store",
+		})
+			
 		const _r = await r.json()
 
 		if (_r.message === "Service Unavailable") {
@@ -33,7 +159,7 @@ const getWildwebe = async (link) => {
 				return _fires
 			}
 
-			if (f.type === 'False Alarm') {
+			if (f.type === 'False Alarm' || f.type === 'Resource Order' || f.type === 'Smoke Check') {
 				return _fires
 			}
 
@@ -48,11 +174,11 @@ const getWildwebe = async (link) => {
 				out: status.out
 			})
 		}, [])
-	// }
-	// catch(err) {
-	// 	console.error(err)
-	// 	return [[], []]
-	// }
+	}
+	catch(err) {
+		console.error(err)
+		return [[], []]
+	}
 
 	if (fires.length === 0) {
 		return [[],[]]
@@ -65,26 +191,57 @@ const getWildwebe = async (link) => {
 	return [fires, center.geometry.coordinates]
 }
 
-async function getStuff(link) {
+async function retryWildwebe(link) {
 	try {
 		const w = await getWildwebe(link)
 
 		return w
 	}
 	catch(err) {
-		return await getStuff(link)
+		return await retryWildwebe(link)
 	}
 }
+
+async function retryWildcad(link) {
+	try {
+		const w = await getWildcad(link)
+
+		return w
+	}
+	catch(err) {
+		return await retryWildcad(link)
+	}
+}
+
+const validWilds = [
+	'AZ-ADC',
+	'IDBDC',
+	'MT-BZC',
+	'MT-MCC',
+	'MTBDC',
+	'OR-BIC',
+	'ORLFC',
+	'WA-NDC',
+	'WA-OLC',
+	'WA-PCC',
+	'WA-SPC',
+	'WA-TDC',
+]
 
 export async function GET({ url }) {
 	const link = url.searchParams.get('link')
 
-	const r = { fires: [] }
-
+	const r = { fires: [], center: [0,0] }
 
 	if (/www.wildwebe.net/.test(link)) {
-		const w = await getStuff(link)
+		const w = await retryWildwebe(link)
 		// const w = await getWildwebe(link)
+		r.fires = w[0]
+		r.center = w[1]
+	}
+
+	else if (validWilds.some(code => link.indexOf(code) >= 0)) {
+		const w = await retryWildcad(link)
 		r.fires = w[0]
 		r.center = w[1]
 	}
