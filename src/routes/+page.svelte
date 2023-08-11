@@ -98,8 +98,8 @@
 
 <style lang="scss">
 	.app {
-		height: 100vh;
-		width: 100vw;
+		height: 100%;
+		width: 100%;
 		position: relative;
 		#map {
 			height: 100%;
@@ -110,6 +110,7 @@
 			top: 20px;
 			left: 20px;
 			width: 500px;
+			max-width: 90vw;
 		}
 	}
 	
