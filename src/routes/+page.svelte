@@ -10,11 +10,9 @@
 		EventData,
 		GeoJSONSource
 	} from 'mapbox-gl'
+  import MapSettings from './mapsettings.svelte'
 
 	import { blankIcon, blankIconTwo } from '@/lib/icons'
-
-	// import urlencode from 'urlencode'
-
 
 	export let data
 
@@ -34,11 +32,41 @@
 	let fires = []
 	let newfires = []
 	let perimeters = {}
+  let tiles = 'Topo'
 
 	$: changeVal(val)
 	$: changeFires(map, fires)
 	$: changeNewFires(map, newfires)
 	$: changePerimeters(map, perimeters)
+  $: changeTiles(map, tiles)
+
+  const changeTiles = async (map: any, tiles: string) => {
+    if (!map) {
+      return
+    }
+
+    const style = map.getStyle().name
+
+    console.log('style', style)
+
+    switch (tiles) {
+      case "Satellite": {
+        if (style !== "Mapbox Satellite") {
+          map.setStyle("mapbox://styles/mapbox/satellite-v9")
+          // map.setStyle("mapbox://styles/mapbox/satellite-streets-v11")
+        }
+        break 
+      }
+
+      case "Topo": {
+        if (style !== "Mapbox Outdoors") {
+          map.setStyle("mapbox://styles/mapbox/outdoors-v11")
+        }
+        break
+      }
+    }
+  }
+
 
 	const changePerimeters = (map, perimeters) => {
 		if (!map || !map.isStyleLoaded()) {
@@ -298,6 +326,8 @@
 		map.on('zoomend', () => {
 			moveBounds()
 		})
+		
+    // map.setStyle("mapbox://styles/mapbox/outdoors-v11")
 
 		setTimeout(() => {
 			moveBounds()
@@ -344,6 +374,9 @@
 </svelte:head>
 
 <div class="app">
+	<MapSettings
+		bind:tiles
+	/>
 	<div class="map" id="map" bind:this={el}></div>
 
 	<!-- <div class="select">
