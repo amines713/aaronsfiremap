@@ -3,6 +3,8 @@ import { addLast } from 'timm'
 import * as turf from '@turf/turf'
 import cheerio from 'cheerio'
 
+import urlencode from 'urlencode'
+
 const getWildcad = async (link) => {
 	const cadUrl = (code) => `http://www.wildcad.net/WC${code}open.htm`
 
